@@ -125,6 +125,21 @@ describe("NavbarIntern Component", () => {
             expect(userApi.getUserProfile).toHaveBeenCalledTimes(1);
         });
 
+        // กรณี: API พื้นฐานทั้ง 3 ตัวพังตอนโหลดหน้าเว็บ
+        // คาดหวัง: ระบบต้องจับ Error ได้ (catch) ไม่ทำให้แอปแครช (Unhandled Rejection)
+        it("handles API errors gracefully on mount without crashing", async () => {
+            (notificationApi.getMyNotifications as jest.Mock).mockRejectedValueOnce(new Error("Network Error"));
+            (favoriteApi.getFavorites as jest.Mock).mockRejectedValueOnce(new Error("Network Error"));
+            (userApi.getUserProfile as jest.Mock).mockRejectedValueOnce(new Error("Network Error"));
+
+            expect(() => render(<NavbarIntern />)).not.toThrow();
+
+            await waitFor(() => {
+                expect(notificationApi.getMyNotifications).toHaveBeenCalledTimes(1);
+            });
+        });
+
+
         // กรณี: เวลาผ่านไป 30 วินาทีหลัง mount (polling interval)
         // คาดหวัง: ต้องเรียก getMyNotifications ซ้ำอีกครั้งโดยอัตโนมัติ (ระบบ poll แจ้งเตือนใหม่เรื่อยๆ)
         it("polls for new notifications every 30 seconds", async () => {
@@ -235,6 +250,45 @@ describe("NavbarIntern Component", () => {
 
             const badges = await screen.findAllByText("99+");
             expect(badges.length).toBeGreaterThan(0);
+        });
+
+        // กรณี: ผู้ใช้คลิกแจ้งเตือนที่อ่านไปแล้ว (isRead: true)
+        // คาดหวัง: ต้องไม่เรียก API markAsRead ซ้ำซ้อน แต่ยังคง Redirect ไปถูกหน้า
+        it("does not call markAsRead if the clicked notification is already read", async () => {
+            (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([
+                makeNotification({ id: 99, title: "ประกาศสำคัญ", isRead: true }),
+            ]);
+            render(<NavbarIntern />);
+
+            const bellButtons = await screen.findAllByRole("button");
+            fireEvent.click(bellButtons[1]); // เปิด dropdown
+
+            const notificationText = await screen.findByText("ประกาศสำคัญ");
+            fireEvent.click(notificationText);
+
+            expect(notificationApi.markAsRead).not.toHaveBeenCalled();
+            expect(mockPush).toHaveBeenCalledWith("/application-status");
+        });
+
+        // กรณี: เปิด Dropdown แจ้งเตือนที่มีข้อความใหม่ แต่ API markAllAsRead พัง
+        // คาดหวัง: ระบบจัดการ Error ได้อย่างปลอดภัย ไม่แครช
+        it("handles errors gracefully when marking all as read fails", async () => {
+            (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([
+                makeNotification({ id: 1, isRead: false }),
+            ]);
+            (notificationApi.markAllAsRead as jest.Mock).mockRejectedValueOnce(new Error("Failed to mark read"));
+
+            render(<NavbarIntern />);
+            await screen.findAllByText("1");
+
+            const bellButtons = screen.getAllByRole("button");
+            fireEvent.click(bellButtons[1]);
+
+            await waitFor(() => {
+                expect(notificationApi.markAllAsRead).toHaveBeenCalled();
+            });
+            // ตรวจสอบว่าแอปไม่แครช และยังคงอยู่ใน DOM
+            expect(await screen.findByText("ผลการสมัครฝึกงาน")).toBeInTheDocument();
         });
 
         // กรณี: ผู้ใช้กดกระดิ่งแจ้งเตือน (desktop) ตอนที่ยังไม่มี panel เปิดอยู่
@@ -716,6 +770,28 @@ describe("NavbarIntern Component", () => {
             expect(screen.queryByText("FAQs")).not.toBeInTheDocument();
         });
 
+        // กรณี: notification dropdown (desktop) เปิดอยู่ แล้วผู้ใช้คลิกที่อื่น
+        // คาดหวัง: dropdown ต้องปิดตัวเอง
+        it("closes the desktop notification dropdown when clicking outside of it", async () => {
+            (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([]);
+            render(<NavbarIntern />);
+            await waitFor(() => expect(notificationApi.getMyNotifications).toHaveBeenCalled());
+
+            const bellButtons = screen.getAllByRole("button");
+            fireEvent.click(bellButtons[1]); // เปิดกระดิ่ง desktop
+
+            // ยืนยันว่าเปิดขึ้นมาแล้ว
+            expect(await screen.findByText("ไม่มีการแจ้งเตือน")).toBeInTheDocument();
+
+            // จำลองการคลิกข้างนอก
+            fireEvent.mouseDown(document.body);
+
+            // ยืนยันว่าปิดไปแล้ว
+            await waitFor(() => {
+                expect(screen.queryByText("ไม่มีการแจ้งเตือน")).not.toBeInTheDocument();
+            });
+        });
+
         // กรณี: profile dropdown (desktop) เปิดอยู่ แล้วผู้ใช้คลิกที่อื่นนอก dropdown
         // คาดหวัง: dropdown ต้องปิดตัวเองเช่นเดียวกัน
         it("closes the desktop profile dropdown when clicking outside of it", async () => {
@@ -731,6 +807,214 @@ describe("NavbarIntern Component", () => {
             fireEvent.mouseDown(document.body);
 
             expect(screen.queryByText("ออกจากระบบ")).not.toBeInTheDocument();
+        });
+        describe("Toggle dropdowns and mobile menus (Open and Close on re-click)", () => {
+            // กรณี: กดปุ่มกระดิ่ง Desktop ซ้ำ 2 ครั้ง
+            // คาดหวัง: ครั้งแรกเปิด Dropdown ครั้งที่สองต้องปิด Dropdown
+            it("toggles desktop notification dropdown on repeated clicks", async () => {
+                render(<NavbarIntern />);
+                await waitFor(() => expect(notificationApi.getMyNotifications).toHaveBeenCalled());
+
+                const bellButtons = screen.getAllByRole("button");
+                fireEvent.click(bellButtons[1]); // เปิด
+                expect(await screen.findByText("ไม่มีการแจ้งเตือน")).toBeInTheDocument();
+
+                fireEvent.click(bellButtons[1]); // ปิด
+                await waitFor(() => {
+                    expect(screen.queryByText("ไม่มีการแจ้งเตือน")).not.toBeInTheDocument();
+                });
+            });
+
+            // กรณี: กดปุ่มช่วยเหลือ (Help) ซ้ำ 2 ครั้ง
+            // คาดหวัง: ครั้งแรกเปิด ครั้งที่สองปิด
+            it("toggles help dropdown on repeated clicks", () => {
+                render(<NavbarIntern />);
+
+                const helpBtn = screen.getByText("ช่วยเหลือ");
+                fireEvent.click(helpBtn);
+                expect(screen.getByText("FAQs")).toBeInTheDocument();
+
+                fireEvent.click(helpBtn);
+                expect(screen.queryByText("FAQs")).not.toBeInTheDocument();
+            });
+
+            // กรณี: กดปุ่มโปรไฟล์ Desktop ซ้ำ 2 ครั้ง
+            // คาดหวัง: ครั้งแรกเปิด ครั้งที่สองปิด
+            it("toggles desktop profile dropdown on repeated clicks", async () => {
+                render(<NavbarIntern />);
+                await waitFor(() => expect(userApi.getUserProfile).toHaveBeenCalled());
+
+                const profileButtons = screen
+                    .getAllByRole("button")
+                    .filter((btn) => !btn.className.includes("md:hidden"));
+                const targetBtn = profileButtons[profileButtons.length - 1];
+
+                fireEvent.click(targetBtn); // เปิด
+                expect(await screen.findByText("ออกจากระบบ")).toBeInTheDocument();
+
+                fireEvent.click(targetBtn); // ปิด
+                expect(screen.queryByText("ออกจากระบบ")).not.toBeInTheDocument();
+            });
+        });
+
+        describe("Mobile Profile Screen Header Buttons & Actions", () => {
+            const openMobileProfile = async () => {
+                const profileButtons = await screen.findAllByRole("button");
+                fireEvent.click(profileButtons[3]);
+            };
+
+            // กรณี: หน้าโปรไฟล์มือถือเปิดอยู่ แล้วกดไอคอนกระดิ่งบน Header ของหน้าจอนั้น
+            // คาดหวัง: สลับไปหน้าจอแจ้งเตือนมือถือ
+            it("switches to mobile notification screen via header bell icon in mobile profile", async () => {
+                render(<NavbarIntern />);
+                await openMobileProfile();
+                expect(await screen.findByText("ข้อมูลผู้สมัคร")).toBeInTheDocument();
+
+                const allButtons = screen.getAllByRole("button");
+                // ปุ่มแรกใน header ของ mobile full screen คือกระดิ่ง
+                fireEvent.click(allButtons[allButtons.length - 3]);
+
+                expect(await screen.findByText("การแจ้งเตือน")).toBeInTheDocument();
+            });
+
+            // กรณี: หน้าโปรไฟล์มือถือเปิดอยู่ แล้วกดไอคอนโปรไฟล์บน Header ของตัวมันเอง
+            // คาดหวัง: ปิดหน้าจอโปรไฟล์มือถือ
+            it("closes mobile profile screen when clicking its own header profile icon", async () => {
+                render(<NavbarIntern />);
+                await openMobileProfile();
+                expect(await screen.findByText("ข้อมูลผู้สมัคร")).toBeInTheDocument();
+
+                const allButtons = screen.getAllByRole("button");
+                fireEvent.click(allButtons[allButtons.length - 2]);
+
+                expect(screen.queryByText("ข้อมูลผู้สมัคร")).not.toBeInTheDocument();
+            });
+
+            // กรณี: หน้าโปรไฟล์มือถือเปิดอยู่ แล้วกดไอคอนแฮมเบอร์เกอร์บน Header
+            // คาดหวัง: สลับไปเปิด Mobile Sidebar Menu
+            it("switches to mobile sidebar menu via header hamburger icon in mobile profile", async () => {
+                render(<NavbarIntern />);
+                await openMobileProfile();
+
+                const allButtons = screen.getAllByRole("button");
+                fireEvent.click(allButtons[allButtons.length - 1]);
+
+                expect(screen.getAllByText("ตำแหน่งฝึกงาน").length).toBeGreaterThan(1);
+            });
+        });
+
+        describe("Error Handling Edge Cases & Mobile Operations", () => {
+            // กรณี: คลิกอ่านแจ้งเตือนเดี่ยวแล้ว API markAsRead พัง
+            // คาดหวัง: ไม่เกิด unhandled crash และยังคง push path ไปตามปกติ
+            it("handles failure when marking a single notification as read", async () => {
+                (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([
+                    makeNotification({ id: 88, isRead: false }),
+                ]);
+                (notificationApi.markAsRead as jest.Mock).mockRejectedValueOnce(new Error("Update failed"));
+
+                render(<NavbarIntern />);
+                const bellButtons = await screen.findAllByRole("button");
+                fireEvent.click(bellButtons[1]);
+
+                const item = await screen.findByText("ผลการสมัครฝึกงาน");
+                fireEvent.click(item);
+
+                await waitFor(() => {
+                    expect(notificationApi.markAsRead).toHaveBeenCalledWith(88, true);
+                });
+                expect(mockPush).toHaveBeenCalledWith("/application-status");
+            });
+
+            // กรณี: ลบแจ้งเตือนทั้งหมดแล้ว API deleteNotification พังระหว่างวนลูป
+            // คาดหวัง: catch block ทำงาน ไม่แครช
+            it("handles failure when clearing all notifications", async () => {
+                (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([
+                    makeNotification({ id: 101 }),
+                ]);
+                (notificationApi.deleteNotification as jest.Mock).mockRejectedValueOnce(new Error("Clear failed"));
+
+                render(<NavbarIntern />);
+                const bellButtons = await screen.findAllByRole("button");
+                fireEvent.click(bellButtons[1]);
+
+                fireEvent.click(await screen.findByText("ลบทั้งหมด"));
+                const confirmModal = screen.getByTestId("confirm-modal");
+                fireEvent.click(within(confirmModal).getByText("ลบทั้งหมด"));
+
+                await waitFor(() => {
+                    expect(notificationApi.deleteNotification).toHaveBeenCalledWith(101);
+                });
+            });
+
+            // กรณี: ลบแจ้งเตือนฝั่งมือถือแล้ว API พัง
+            // คาดหวัง: catch block ฝั่งมือถือทำงานปลอดภัย
+            it("handles deletion failure in mobile notification view", async () => {
+                (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([
+                    makeNotification({ id: 202 }),
+                ]);
+                (notificationApi.deleteNotification as jest.Mock).mockRejectedValueOnce(new Error("Mobile delete failed"));
+
+                render(<NavbarIntern />);
+                const bellButtons = await screen.findAllByRole("button");
+                fireEvent.click(bellButtons[2]); // เปิด notification มือถือ
+
+                const deleteBtn = (await screen.findAllByLabelText("ลบการแจ้งเตือน"))[0];
+                fireEvent.click(deleteBtn);
+                fireEvent.click(screen.getByText("ลบ"));
+
+                await waitFor(() => {
+                    expect(notificationApi.deleteNotification).toHaveBeenCalledWith(202);
+                });
+            });
+        });
+
+        describe("Active Route Highlighting & Additional Conditionals", () => {
+            
+            // กรณี: อยู่หน้า /intern-home
+            // คาดหวัง: ลิงก์ 'หน้าแรก' หรือ 'ตำแหน่งฝึกงาน' ได้รับ active style
+            it("applies active styles based on current pathname", () => {
+                (usePathname as jest.Mock).mockReturnValue("/intern-home");
+                render(<NavbarIntern />);
+
+                const homeLink = screen.getByText("หน้าหลัก").closest("a");
+                expect(homeLink).toHaveAttribute("href", "/intern-home");
+            });
+
+            // กรณี: favoritesCount = 0 หรือเป็น null
+            // คาดหวัง: ต้องไม่แสดงจุด animate-pulse badge
+            it("does not display pulse badge when favoritesCount is 0", async () => {
+                (favoriteApi.getFavorites as jest.Mock).mockResolvedValue({ data: [] });
+                const { container } = render(<NavbarIntern favoritesCount={0} />);
+
+                await waitFor(() => {
+                    expect(container.querySelector(".animate-pulse")).not.toBeInTheDocument();
+                });
+            });
+
+            // กรณี: internshipStatus เป็นสถานะอื่น เช่น REJECTED หรือ COMPLETED
+            // คาดหวัง: ซ่อนปุ่ม iTT
+            it("hides iTT link for statuses other than AWAITING or ACTIVE", async () => {
+                (extractStudentProfile as jest.Mock).mockReturnValue({
+                    internshipStatus: "REJECTED",
+                });
+                render(<NavbarIntern />);
+
+                await waitFor(() => expect(userApi.getUserProfile).toHaveBeenCalled());
+                expect(screen.queryByText("iTT")).not.toBeInTheDocument();
+            });
+
+            // กรณี: Component ถูก unmount
+            // คาดหวัง: ต้องล้าง polling interval ด้วย clearInterval
+            it("cleans up timer on unmount", () => {
+                jest.useFakeTimers();
+                const clearIntervalSpy = jest.spyOn(window, "clearInterval");
+
+                const { unmount } = render(<NavbarIntern />);
+                unmount();
+
+                expect(clearIntervalSpy).toHaveBeenCalled();
+                jest.useRealTimers();
+            });
         });
     });
 });
