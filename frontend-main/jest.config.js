@@ -10,6 +10,10 @@ const createJestConfig = nextJest({
 const customJestConfig = {
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
   testEnvironment: "jest-environment-jsdom",
+  moduleNameMapper: {
+    // ต้อง map "@/" ให้ตรงกับ paths ใน tsconfig.json ("@/*": ["./*"])
+    "^@/(.*)$": "<rootDir>/$1",
+  },
 };
 
 module.exports = createJestConfig(customJestConfig);

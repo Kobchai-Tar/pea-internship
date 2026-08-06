@@ -47,7 +47,6 @@ export default function JobCard({
   mobileDetailPath = "public",
 }: JobCardProps) {
   const router = useRouter();
-  console.log("JobCard rendered with job:", job);
 
   const handleBookmarkClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -73,7 +72,7 @@ export default function JobCard({
     <div
       onClick={handleCardClick}
       className={`bg-white rounded-lg border-2 p-4 cursor-pointer transition-all md:hover:shadow-md md:hover:border-primary-700 active:border-primary-700 active:scale-[0.99] ${
-        !isSelected && !navigateOnMobile
+        isSelected && !navigateOnMobile
           ? "border-primary-700 shadow-md"
           : "border-gray-100"
       }`}

@@ -11,8 +11,9 @@
     "build": "next build",
     "start": "next start -p 2700",
     "lint": "eslint",
-        "test": "jest --coverage"
-
+        "test": "jest",
+        "test:watch": "jest --watch",
+        "test:coverage": "jest --coverage"
   },
   "dependencies": {
     "axios": "^1.15.1",
