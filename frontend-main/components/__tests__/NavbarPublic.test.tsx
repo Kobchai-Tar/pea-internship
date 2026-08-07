@@ -24,6 +24,12 @@ describe("NavbarPublic Component", () => {
     const mockPush = jest.fn();
     const mockReplace = jest.fn();
 
+    // เช็คว่า element มี class ตัวนี้อยู่จริงแบบ "ตรงเป๊ะ" (exact token match)
+    // ต่างจาก className.includes(...)/toContain(...) ตรงที่จะไม่ false-positive กับ class อื่นที่บังเอิญ
+    // มีคำนี้ซ้อนอยู่ข้างใน เช่น "text-primary-600" ที่ซ่อนอยู่ในคำว่า "hover:text-primary-600"
+    const hasExactClass = (element: HTMLElement, className: string) =>
+        element.className.split(/\s+/).includes(className);
+
     beforeEach(() => {
         jest.clearAllMocks();
         (usePathname as jest.Mock).mockReturnValue("/");
@@ -145,12 +151,12 @@ describe("NavbarPublic Component", () => {
             (usePathname as jest.Mock).mockReturnValue("/");
             render(<NavbarPublic />);
 
-            expect(screen.getByText("ตำแหน่งฝึกงาน").className).toContain(
-                "text-primary-600"
+            expect(hasExactClass(screen.getByText("ตำแหน่งฝึกงาน"), "text-primary-600")).toBe(
+                true
             );
-            expect(screen.getByText("ข้อมูลกฟภ.").className).not.toContain(
-                "text-primary-600"
-            );
+            expect(
+                hasExactClass(screen.getByText("ข้อมูลกฟภ."), "text-primary-600")
+            ).toBe(false);
         });
 
         // กรณี: path ปัจจุบันคือ "/pea-info"
@@ -159,12 +165,12 @@ describe("NavbarPublic Component", () => {
             (usePathname as jest.Mock).mockReturnValue("/pea-info");
             render(<NavbarPublic />);
 
-            expect(screen.getByText("ข้อมูลกฟภ.").className).toContain(
-                "text-primary-600"
-            );
-            expect(screen.getByText("ตำแหน่งฝึกงาน").className).not.toContain(
-                "text-primary-600"
-            );
+            expect(
+                hasExactClass(screen.getByText("ข้อมูลกฟภ."), "text-primary-600")
+            ).toBe(true);
+            expect(
+                hasExactClass(screen.getByText("ตำแหน่งฝึกงาน"), "text-primary-600")
+            ).toBe(false);
         });
 
         // กรณี: path ปัจจุบันคือ "/faqs" (อยู่ในกลุ่มที่ปุ่ม "ช่วยเหลือ" เองต้องไฮไลต์ด้วย)
@@ -364,12 +370,12 @@ describe("NavbarPublic Component", () => {
             (usePathname as jest.Mock).mockReturnValue("/favorites");
             render(<NavbarPublic isLoggedIn userRole="intern" />);
 
-            expect(screen.getByText("รายการโปรด").className).toContain(
-                "text-primary-600"
-            );
-            expect(screen.getByText("ตำแหน่งฝึกงาน").className).not.toContain(
-                "text-primary-600"
-            );
+            expect(
+                hasExactClass(screen.getByText("รายการโปรด"), "text-primary-600")
+            ).toBe(true);
+            expect(
+                hasExactClass(screen.getByText("ตำแหน่งฝึกงาน"), "text-primary-600")
+            ).toBe(false);
         });
 
         // กรณี: path ปัจจุบันคือ "/application-history" แล้วเปิด profile dropdown
