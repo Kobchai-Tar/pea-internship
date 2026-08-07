@@ -138,6 +138,120 @@ describe("NavbarPublic Component", () => {
         });
     });
 
+    describe("Active link highlighting (guest mode)", () => {
+        // กรณี: path ปัจจุบันคือ "/" (ตรงกับลิงก์ "ตำแหน่งฝึกงาน")
+        // คาดหวัง: ลิงก์ "ตำแหน่งฝึกงาน" ต้องมีสี active (text-primary-600) ส่วน "ข้อมูลกฟภ." ต้องเป็นสีปกติ
+        it("highlights 'ตำแหน่งฝึกงาน' when pathname is '/'", () => {
+            (usePathname as jest.Mock).mockReturnValue("/");
+            render(<NavbarPublic />);
+
+            expect(screen.getByText("ตำแหน่งฝึกงาน").className).toContain(
+                "text-primary-600"
+            );
+            expect(screen.getByText("ข้อมูลกฟภ.").className).not.toContain(
+                "text-primary-600"
+            );
+        });
+
+        // กรณี: path ปัจจุบันคือ "/pea-info"
+        // คาดหวัง: สลับกัน "ข้อมูลกฟภ." ต้อง active แทน
+        it("highlights 'ข้อมูลกฟภ.' when pathname is '/pea-info'", () => {
+            (usePathname as jest.Mock).mockReturnValue("/pea-info");
+            render(<NavbarPublic />);
+
+            expect(screen.getByText("ข้อมูลกฟภ.").className).toContain(
+                "text-primary-600"
+            );
+            expect(screen.getByText("ตำแหน่งฝึกงาน").className).not.toContain(
+                "text-primary-600"
+            );
+        });
+
+        // กรณี: path ปัจจุบันคือ "/faqs" (อยู่ในกลุ่มที่ปุ่ม "ช่วยเหลือ" เองต้องไฮไลต์ด้วย)
+        // คาดหวัง: ปุ่ม "ช่วยเหลือ" ต้องมีสี active แม้ dropdown จะยังไม่เปิดก็ตาม
+        it("highlights the 'ช่วยเหลือ' toggle button when pathname is '/faqs'", () => {
+            (usePathname as jest.Mock).mockReturnValue("/faqs");
+            render(<NavbarPublic />);
+
+            expect(screen.getByText("ช่วยเหลือ").className).toContain(
+                "text-primary-600"
+            );
+        });
+
+        // กรณี: path ปัจจุบันขึ้นต้นด้วย "/guide" (เช่นหน้าย่อยของคู่มือ) แล้วเปิด dropdown ช่วยเหลือ
+        // คาดหวัง: ทั้งปุ่ม "ช่วยเหลือ" และลิงก์ "คู่มือการใช้งาน" ข้างในต้อง active พร้อมกัน
+        // (เช็คว่าใช้ pathname.startsWith("/guide") ไม่ใช่การเทียบเท่ากันตรงๆ)
+        it("highlights the guide link using startsWith when on a guide sub-page", () => {
+            (usePathname as jest.Mock).mockReturnValue("/guide/step-1");
+            render(<NavbarPublic />);
+
+            expect(screen.getByText("ช่วยเหลือ").className).toContain(
+                "text-primary-600"
+            );
+
+            fireEvent.click(screen.getByText("ช่วยเหลือ"));
+            expect(screen.getByText("คู่มือการใช้งาน").className).toContain(
+                "text-primary-600"
+            );
+        });
+
+        // กรณี: path ปัจจุบันคือ "/credits" แล้วเปิด dropdown ช่วยเหลือ
+        // คาดหวัง: ลิงก์ "ผู้จัดทำ" ข้างใน dropdown ต้อง active
+        it("highlights 'ผู้จัดทำ' inside the help dropdown when pathname is '/credits'", () => {
+            (usePathname as jest.Mock).mockReturnValue("/credits");
+            render(<NavbarPublic />);
+
+            fireEvent.click(screen.getByText("ช่วยเหลือ"));
+            expect(screen.getByText("ผู้จัดทำ").className).toContain(
+                "text-primary-600"
+            );
+        });
+    });
+
+    describe("Closing dropdowns via link clicks (guest mode)", () => {
+        // กรณี: เปิด dropdown ช่วยเหลือ แล้วคลิกลิงก์ย่อยแต่ละอันทีละตัว (คู่มือ/FAQs/ผู้จัดทำ)
+        // คาดหวัง: ทุกครั้งที่คลิกลิงก์ย่อย dropdown ต้องปิดตัวเองไปด้วย (ไม่ใช่แค่ปิดตอนคลิกนอกเท่านั้น)
+        it("closes the help dropdown when clicking any of its sub-links", () => {
+            render(<NavbarPublic />);
+
+            fireEvent.click(screen.getByText("ช่วยเหลือ"));
+            fireEvent.click(screen.getByText("คู่มือการใช้งาน"));
+            expect(screen.queryByText("FAQs")).not.toBeInTheDocument();
+
+            fireEvent.click(screen.getByText("ช่วยเหลือ"));
+            fireEvent.click(screen.getByText("FAQs"));
+            expect(screen.queryByText("ผู้จัดทำ")).not.toBeInTheDocument();
+
+            fireEvent.click(screen.getByText("ช่วยเหลือ"));
+            fireEvent.click(screen.getByText("ผู้จัดทำ"));
+            expect(screen.queryByText("คู่มือการใช้งาน")).not.toBeInTheDocument();
+        });
+
+        // กรณี: เปิด sidebar มือถือ แล้วคลิกลิงก์แต่ละอันในนั้นทีละตัว
+        // คาดหวัง: ทุกครั้งที่คลิกลิงก์ sidebar ต้องปิดตัวเองไปด้วย (เหมือน help dropdown)
+        it("closes the mobile sidebar when clicking any of its nav links", () => {
+            render(<NavbarPublic />);
+
+            const linksToTest = [
+                "ตำแหน่งฝึกงาน",
+                "ข้อมูลกฟภ.",
+                "คู่มือการใช้งาน",
+                "FAQs",
+                "ผู้จัดทำ",
+                "เข้าสู่ระบบผู้สมัคร",
+            ];
+
+            for (const label of linksToTest) {
+                fireEvent.click(screen.getByLabelText("Open menu"));
+                // ลิงก์ในหน้า sidebar จะเป็น element ตัวสุดท้ายที่เจอเสมอ (render มาทีหลัง desktop nav)
+                const matches = screen.getAllByText(label);
+                fireEvent.click(matches[matches.length - 1]);
+
+                expect(screen.getAllByText("ตำแหน่งฝึกงาน").length).toBe(1);
+            }
+        });
+    });
+
     describe("Logged-in intern mode (isLoggedIn=true, userRole='intern')", () => {
         // กรณี: ล็อกอินเป็น intern แล้ว
         // คาดหวัง: ต้องเห็นลิงก์ "รายการโปรด" เพิ่มมา และต้องไม่เห็นปุ่มล็อกอินทั้งสองปุ่มอีกต่อไป
@@ -228,6 +342,51 @@ describe("NavbarPublic Component", () => {
                 expect(authStorage.clearAuth).toHaveBeenCalledTimes(1);
             });
             expect(mockReplace).toHaveBeenCalledWith("/");
+        });
+
+        // กรณี: profile dropdown เปิดอยู่ แล้วผู้ใช้คลิกที่อื่นนอก dropdown
+        // คาดหวัง: dropdown ต้องปิดตัวเองอัตโนมัติ เหมือน dropdown อื่นๆ ในไฟล์นี้
+        it("closes the profile dropdown when clicking outside of it", () => {
+            render(<NavbarPublic isLoggedIn userRole="intern" />);
+
+            const buttons = screen.getAllByRole("button");
+            fireEvent.click(buttons[1]);
+            expect(screen.getByText("ออกจากระบบ")).toBeInTheDocument();
+
+            fireEvent.mouseDown(document.body);
+
+            expect(screen.queryByText("ออกจากระบบ")).not.toBeInTheDocument();
+        });
+
+        // กรณี: path ปัจจุบันคือ "/favorites"
+        // คาดหวัง: ลิงก์ "รายการโปรด" ในเมนู intern ต้อง active ส่วน "ตำแหน่งฝึกงาน" ต้องเป็นสีปกติ
+        it("highlights 'รายการโปรด' when pathname is '/favorites'", () => {
+            (usePathname as jest.Mock).mockReturnValue("/favorites");
+            render(<NavbarPublic isLoggedIn userRole="intern" />);
+
+            expect(screen.getByText("รายการโปรด").className).toContain(
+                "text-primary-600"
+            );
+            expect(screen.getByText("ตำแหน่งฝึกงาน").className).not.toContain(
+                "text-primary-600"
+            );
+        });
+
+        // กรณี: path ปัจจุบันคือ "/application-history" แล้วเปิด profile dropdown
+        // คาดหวัง: ลิงก์ "ประวัติการสมัคร" ต้อง active ส่วนลิงก์อื่นในเมนูต้องไม่ active
+        it("highlights 'ประวัติการสมัคร' in the profile dropdown based on pathname", () => {
+            (usePathname as jest.Mock).mockReturnValue("/application-history");
+            render(<NavbarPublic isLoggedIn userRole="intern" />);
+
+            const buttons = screen.getAllByRole("button");
+            fireEvent.click(buttons[1]);
+
+            expect(screen.getByText("ประวัติการสมัคร").className).toContain(
+                "text-primary-600"
+            );
+            expect(screen.getByText("ข้อมูลผู้สมัคร").className).not.toContain(
+                "text-primary-600"
+            );
         });
     });
 
