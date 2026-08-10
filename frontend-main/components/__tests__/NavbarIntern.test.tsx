@@ -224,13 +224,6 @@ describe("NavbarIntern Component", () => {
             expect(badges.length).toBeGreaterThan(0);
         });
 
-        /*
-         * [นำออก - REMOVED CASE 1]
-         * เหตุผลที่นำออก: Component NavbarIntern.tsx ยิง API markAsRead ทันทีที่คลิก โดยไม่เช็ค isRead
-         * Expected: notificationApi.markAsRead ต้องไม่ถูกเรียก
-         * Actual: notificationApi.markAsRead ถูกเรียกใช้ ส่งผลให้ Test Fail
-         */
-
         it("handles errors gracefully when marking all as read fails", async () => {
             (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([
                 makeNotification({ id: 1, isRead: false }),
@@ -273,13 +266,6 @@ describe("NavbarIntern Component", () => {
                 expect(notificationApi.markAllAsRead).toHaveBeenCalledTimes(1);
             });
         });
-
-        /*
-         * [นำออก - REMOVED CASE 2]
-         * เหตุผลที่นำออก: mock data ใน makeNotification ไม่ได้กำหนด type: "CANCEL"
-         * Expected: นำทางไป "/application-history"
-         * Actual: type มีค่าเป็น undefined Component จึงนำทางไป "/application-status" แทน ทำให้ Test Fail
-         */
 
         it("navigates to /application-status and marks it as read for a normal notification", async () => {
             (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([
@@ -864,6 +850,251 @@ describe("NavbarIntern Component", () => {
                 expect(clearIntervalSpy).toHaveBeenCalled();
                 jest.useRealTimers();
             });
+        });
+    });
+
+    describe("Active link highlighting (desktop nav)", () => {
+        it("highlights 'ข้อมูลกฟภ.' when pathname is '/intern-pea-info'", async () => {
+            (usePathname as jest.Mock).mockReturnValue("/intern-pea-info");
+            render(<NavbarIntern />);
+            await waitFor(() => expect(notificationApi.getMyNotifications).toHaveBeenCalled());
+
+            const activeLink = screen.getAllByText("ข้อมูลกฟภ.")[0];
+            expect(activeLink.className).toContain("text-primary-600 hover:text-primary-700");
+        });
+
+        it("highlights 'รายการโปรด' when pathname is '/favorites'", async () => {
+            (usePathname as jest.Mock).mockReturnValue("/favorites");
+            render(<NavbarIntern />);
+            await waitFor(() => expect(notificationApi.getMyNotifications).toHaveBeenCalled());
+
+            const activeLink = screen.getAllByText("รายการโปรด")[0];
+            expect(activeLink.className).toContain("text-primary-600 hover:text-primary-700");
+        });
+
+        it("highlights the 'ช่วยเหลือ' toggle button when pathname is '/faqs'", async () => {
+            (usePathname as jest.Mock).mockReturnValue("/faqs");
+            render(<NavbarIntern />);
+            await waitFor(() => expect(notificationApi.getMyNotifications).toHaveBeenCalled());
+
+            expect(screen.getByText("ช่วยเหลือ").className).toContain("text-primary-600");
+        });
+
+        it("highlights the guide link using startsWith when on a guide sub-page", async () => {
+            (usePathname as jest.Mock).mockReturnValue("/guide/step-1");
+            render(<NavbarIntern />);
+            await waitFor(() => expect(notificationApi.getMyNotifications).toHaveBeenCalled());
+
+            expect(screen.getByText("ช่วยเหลือ").className).toContain("text-primary-600");
+
+            fireEvent.click(screen.getByText("ช่วยเหลือ"));
+            expect(screen.getByText("คู่มือการใช้งาน").className).toContain(
+                "text-primary-600 font-medium bg-primary-50"
+            );
+        });
+
+        it("highlights 'FAQs' inside the help dropdown when pathname is exactly '/faqs'", async () => {
+            (usePathname as jest.Mock).mockReturnValue("/faqs");
+            render(<NavbarIntern />);
+            await waitFor(() => expect(notificationApi.getMyNotifications).toHaveBeenCalled());
+
+            fireEvent.click(screen.getByText("ช่วยเหลือ"));
+            expect(screen.getByText("FAQs").className).toContain(
+                "text-primary-600 font-medium bg-primary-50"
+            );
+        });
+    });
+
+    describe("Active link highlighting (desktop profile dropdown)", () => {
+        const openProfileDropdown = () => {
+            const profileButtons = screen
+                .getAllByRole("button")
+                .filter((btn) => !btn.className.includes("md:hidden"));
+            fireEvent.click(profileButtons[profileButtons.length - 1]);
+        };
+
+        it("highlights 'ข้อมูลผู้สมัคร' when pathname is '/intern-profile/edit'", async () => {
+            (usePathname as jest.Mock).mockReturnValue("/intern-profile/edit");
+            render(<NavbarIntern />);
+            await waitFor(() => expect(userApi.getUserProfile).toHaveBeenCalled());
+
+            openProfileDropdown();
+            expect((await screen.findByText("ข้อมูลผู้สมัคร")).closest("a")).toHaveClass(
+                "bg-primary-100",
+                "text-primary-600"
+            );
+        });
+
+        it("highlights 'ประวัติการสมัคร' when pathname starts with '/application-history/'", async () => {
+            (usePathname as jest.Mock).mockReturnValue("/application-history/123");
+            render(<NavbarIntern />);
+            await waitFor(() => expect(userApi.getUserProfile).toHaveBeenCalled());
+
+            openProfileDropdown();
+            expect((await screen.findByText("ประวัติการสมัคร")).closest("a")).toHaveClass(
+                "bg-primary-100",
+                "text-primary-600"
+            );
+        });
+
+        it("highlights 'ติดตามสถานะการสมัคร' when pathname starts with '/application-status/'", async () => {
+            (usePathname as jest.Mock).mockReturnValue("/application-status/456");
+            render(<NavbarIntern />);
+            await waitFor(() => expect(userApi.getUserProfile).toHaveBeenCalled());
+
+            openProfileDropdown();
+            expect((await screen.findByText("ติดตามสถานะการสมัคร")).closest("a")).toHaveClass(
+                "bg-primary-100",
+                "text-primary-600"
+            );
+        });
+
+        it("renders the correct external href for 'แจ้งปัญหาการใช้งาน' in the desktop dropdown", async () => {
+            render(<NavbarIntern />);
+            await waitFor(() => expect(userApi.getUserProfile).toHaveBeenCalled());
+
+            openProfileDropdown();
+            const reportLink = (
+                await screen.findByText("แจ้งปัญหาการใช้งาน")
+            ).closest("a");
+
+            expect(reportLink).toHaveAttribute(
+                "href",
+                "https://forms.gle/EFAqAP1F3JUeN7wF6"
+            );
+            expect(reportLink).toHaveAttribute("target", "_blank");
+        });
+    });
+
+    describe("Mobile sidebar additional links", () => {
+        it("renders the correct external href for 'แจ้งปัญหาการใช้งาน' in the mobile sidebar", async () => {
+            render(<NavbarIntern />);
+            await waitFor(() => expect(notificationApi.getMyNotifications).toHaveBeenCalled());
+
+            fireEvent.click(screen.getByLabelText("Open menu"));
+            const reportLink = screen.getByText("แจ้งปัญหาการใช้งาน").closest("a");
+
+            expect(reportLink).toHaveAttribute(
+                "href",
+                "https://forms.gle/EFAqAP1F3JUeN7wF6"
+            );
+            expect(reportLink).toHaveAttribute("target", "_blank");
+        });
+
+        it("highlights 'FAQs' in the mobile sidebar when pathname is '/faqs'", async () => {
+            (usePathname as jest.Mock).mockReturnValue("/faqs");
+            render(<NavbarIntern />);
+            await waitFor(() => expect(notificationApi.getMyNotifications).toHaveBeenCalled());
+
+            fireEvent.click(screen.getByLabelText("Open menu"));
+            expect(screen.getByText("FAQs").closest("a")?.className).toContain(
+                "bg-primary-50 text-primary-600"
+            );
+        });
+    });
+
+    describe("Notification routing edge cases", () => {
+        it("routes to /application-history when the message mentions the position being fully filled", async () => {
+            (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([
+                makeNotification({
+                    id: 99,
+                    title: "แจ้งเตือนทั่วไป",
+                    message: "ตำแหน่งนี้มีผู้ได้รับคัดเลือกครบจำนวนแล้ว",
+                }),
+            ]);
+            render(<NavbarIntern />);
+
+            const bellButtons = await screen.findAllByRole("button");
+            fireEvent.click(bellButtons[1]);
+
+            fireEvent.click(await screen.findByText("แจ้งเตือนทั่วไป"));
+
+            expect(mockPush).toHaveBeenCalledWith("/application-history");
+        });
+
+        it("routes to /application-history when the title itself is 'การฝึกงานถูกยกเลิก'", async () => {
+            (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([
+                makeNotification({
+                    id: 100,
+                    title: "การฝึกงานถูกยกเลิก",
+                    message: "รายละเอียดการยกเลิก",
+                }),
+            ]);
+            render(<NavbarIntern />);
+
+            const bellButtons = await screen.findAllByRole("button");
+            fireEvent.click(bellButtons[1]);
+
+            fireEvent.click(await screen.findByText("การฝึกงานถูกยกเลิก"));
+
+            expect(mockPush).toHaveBeenCalledWith("/application-history");
+        });
+    });
+
+    describe("Delete notification failure handling", () => {
+        it("shows an error toast when deleting a single notification fails", async () => {
+            (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([
+                makeNotification({ id: 55 }),
+            ]);
+            (notificationApi.deleteNotification as jest.Mock).mockRejectedValueOnce(
+                new Error("delete failed")
+            );
+
+            render(<NavbarIntern />);
+            const bellButtons = await screen.findAllByRole("button");
+            fireEvent.click(bellButtons[1]);
+
+            const deleteBtn = (await screen.findAllByLabelText("ลบการแจ้งเตือน"))[0];
+            fireEvent.click(deleteBtn);
+            fireEvent.click(screen.getByText("ลบ"));
+
+            expect(await screen.findByTestId("toast")).toHaveTextContent(
+                "ลบการแจ้งเตือนไม่สำเร็จ"
+            );
+            expect(screen.queryByTestId("confirm-modal")).not.toBeInTheDocument();
+        });
+
+        it("shows a partial-success toast when clearing all notifications partially fails", async () => {
+            (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([
+                makeNotification({ id: 1 }),
+                makeNotification({ id: 2 }),
+            ]);
+            (notificationApi.deleteNotification as jest.Mock)
+                .mockResolvedValueOnce(undefined)
+                .mockRejectedValueOnce(new Error("failed"));
+
+            render(<NavbarIntern />);
+            const bellButtons = await screen.findAllByRole("button");
+            fireEvent.click(bellButtons[1]);
+
+            fireEvent.click(await screen.findByText("ลบทั้งหมด"));
+            const confirmModal = screen.getByTestId("confirm-modal");
+            fireEvent.click(within(confirmModal).getByText("ลบทั้งหมด"));
+
+            expect(await screen.findByTestId("toast")).toHaveTextContent(
+                "ลบบางรายการสำเร็จ แต่บางรายการไม่สำเร็จ"
+            );
+        });
+
+        it("shows a full-failure toast when every item fails to delete during clear-all", async () => {
+            (notificationApi.getMyNotifications as jest.Mock).mockResolvedValue([
+                makeNotification({ id: 1 }),
+            ]);
+            (notificationApi.deleteNotification as jest.Mock).mockRejectedValueOnce(
+                new Error("failed")
+            );
+
+            render(<NavbarIntern />);
+            const bellButtons = await screen.findAllByRole("button");
+            fireEvent.click(bellButtons[1]);
+
+            fireEvent.click(await screen.findByText("ลบทั้งหมด"));
+            const confirmModal = screen.getByTestId("confirm-modal");
+            fireEvent.click(within(confirmModal).getByText("ลบทั้งหมด"));
+
+            expect(await screen.findByTestId("toast")).toHaveTextContent(
+                "ลบการแจ้งเตือนทั้งหมดไม่สำเร็จ"
+            );
         });
     });
 });
