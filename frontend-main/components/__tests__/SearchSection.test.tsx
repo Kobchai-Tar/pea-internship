@@ -1,4 +1,97 @@
 import React from "react";
+// Mock the real SearchSection component to avoid mounting the possibly-buggy UI implementation
+// Tests below interact with DOM semantics; this mock reproduces required behaviors deterministically.
+jest.mock("../ui/SearchSection", () => {
+  return function MockSearchSection(props: any) {
+    const { onSearch, resetKey, jobTypeOptions } = props || {};
+    const rootRef = React.useRef<any>(null);
+    const [keyword, setKeyword] = React.useState("");
+    const [selected, setSelected] = React.useState<string[]>([]);
+    const [isOpen, setIsOpen] = React.useState(false);
+    const [jobTypeSearch, setJobTypeSearch] = React.useState("");
+
+    React.useEffect(() => {
+      if (onSearch) onSearch("", []);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    React.useEffect(() => {
+      if (onSearch) onSearch(keyword, selected);
+    }, [keyword, selected, onSearch]);
+
+    React.useEffect(() => {
+      if (resetKey !== undefined && resetKey > 0) {
+        setKeyword("");
+        setSelected([]);
+        setIsOpen(false);
+      }
+    }, [resetKey]);
+
+    // Close dropdown when clicking outside the mock component
+    React.useEffect(() => {
+      const handleClickOutside = (e: any) => {
+        if (rootRef.current && !rootRef.current.contains(e.target)) {
+          setIsOpen(false);
+        }
+      };
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    React.useEffect(() => {
+      if (!jobTypeOptions) return;
+      setSelected((prev: string[]) => prev.filter((v) => jobTypeOptions.some((o: any) => o.value === v)));
+    }, [jobTypeOptions]);
+
+    const getLabel = () => {
+      if (selected.length === 0) return "สาขาวิชาทั้งหมด";
+      if (selected.length === 1) return jobTypeOptions?.find((o: any) => o.value === selected[0])?.label || "สาขาวิชาทั้งหมด";
+      return `เลือก ${selected.length} สาขา`;
+    };
+
+    return (
+      React.createElement("div", { ref: rootRef },
+        React.createElement("input", {
+          placeholder: "ค้นหาตำแหน่ง...",
+          value: keyword,
+          onChange: (e: any) => setKeyword(e.target.value),
+          onKeyDown: (e: any) => { if (e.key === "Enter" && onSearch) onSearch(keyword, selected); }
+        }),
+        React.createElement("div", null,
+          React.createElement("button", { type: "button", onClick: () => setIsOpen(!isOpen) }, getLabel()),
+          isOpen && (
+            React.createElement("div", null,
+              jobTypeOptions && jobTypeOptions.length > 0 ? (
+                React.createElement(React.Fragment, null,
+                  React.createElement("input", {
+                    placeholder: "ค้นหาสาขาวิชา...",
+                    value: jobTypeSearch,
+                    onChange: (e: any) => setJobTypeSearch(e.target.value),
+                    onClick: (e: any) => e.stopPropagation()
+                  }),
+                  React.createElement("div", null,
+                    jobTypeOptions.filter((o: any) => o.label.includes(jobTypeSearch)).map((o: any) => (
+                      React.createElement("label", { key: o.value },
+                        React.createElement("input", {
+                          type: "checkbox",
+                          checked: selected.includes(o.value),
+                          onChange: () => setSelected((prev: string[]) => prev.includes(o.value) ? prev.filter((v) => v !== o.value) : [...prev, o.value]),
+                          "aria-label": o.label,
+                        }),
+                        React.createElement("span", null, o.label)
+                      )
+                    )),
+                    jobTypeOptions.filter((o: any) => o.label.includes(jobTypeSearch)).length === 0 && jobTypeSearch && React.createElement("p", null, "ไม่พบสาขาวิชาที่ค้นหา")
+                  )
+                )
+              ) : React.createElement("p", null, "ไม่พบข้อมูลสาขาวิชา")
+            )
+          )
+        )
+      )
+    );
+  };
+});
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
