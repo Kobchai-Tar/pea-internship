@@ -6,7 +6,7 @@ test.describe('Job Application', () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     // ต้อง login เข้าระบบก่อนเสมอ (User ต้องมีอยู่ในระบบ)
     await page.goto('http://localhost:2700/login/intern');
-    await login(page, '0853652555', '12345678');
+    await login(page, '7777777777', '12345678');
     await expect(page).not.toHaveURL(/\/login/);
 
     await page.goto('http://localhost:2700/intern-info?positionId=3');
